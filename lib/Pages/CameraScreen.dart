@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:camera/camera.dart'; 
+import 'dart:io';
+
+// Impor model logic dan halaman hasil
+import '../utils/Classifier.dart'; 
+import 'ResultScreen.dart';
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
@@ -14,10 +19,15 @@ class _CameraScreenState extends State<CameraScreen> {
   late CameraController _controller;
   Future<void>? _initializeControllerFuture;
   final ImagePicker _picker = ImagePicker();
+  
+  // 1. Inisialisasi Classifier
+  late Classifier _classifier;
+  bool _isAnalyzing = false; // State untuk loading/analisis
 
   @override
   void initState() {
     super.initState();
+    _classifier = Classifier(); // Objek classifier dibuat
     _initializeCamera();
   }
 
@@ -41,7 +51,6 @@ class _CameraScreenState extends State<CameraScreen> {
         setState(() {});
       }
     } catch (e) {
-      // Tampilkan error jika inisialisasi gagal
       Get.snackbar("Error", "Gagal menginisialisasi kamera: $e", snackPosition: SnackPosition.BOTTOM);
     }
   }
@@ -52,20 +61,46 @@ class _CameraScreenState extends State<CameraScreen> {
     super.dispose();
   }
 
+  // --- 2. Logika Utama Klasifikasi (Dipanggil setelah ambil/pilih gambar) ---
+  void _analyzeAndNavigate(File imageFile) {
+    if (!mounted) return;
+    setState(() {
+      _isAnalyzing = true;
+    });
+
+    try {
+      // 2a. Lakukan Klasifikasi TFLite
+      final result = _classifier.classifyImage(imageFile);
+      
+      // 2b. Navigasi ke Halaman Hasil
+      // Menggunakan Get.to untuk navigasi dengan GetX
+      Get.off(
+        ResultScreen(
+          imageFile: imageFile,
+          classificationResult: result,
+        ),
+      );
+
+    } catch (e) {
+      Get.snackbar("Error Analisis", "Gagal memproses gambar: $e", snackPosition: SnackPosition.BOTTOM);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAnalyzing = false;
+        });
+      }
+    }
+  }
+
   // Logika pengambilan gambar (Foto dari kamera)
   Future<void> _takePicture() async {
+    if (_isAnalyzing) return; // Mencegah klik ganda saat loading
     try {
       await _initializeControllerFuture;
       final XFile image = await _controller.takePicture();
-
-      // Placeholder: Lanjutkan ke logika TFLite
-      Get.snackbar(
-        "Foto Diambil", 
-        "Siap dianalisis: ${image.path}",
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.green,
-        colorText: Colors.white
-      );
+      
+      // Gantikan Placeholder
+      _analyzeAndNavigate(File(image.path));
 
     } catch (e) {
       Get.snackbar("Error Kamera", "Gagal mengambil foto: $e", snackPosition: SnackPosition.BOTTOM);
@@ -74,17 +109,12 @@ class _CameraScreenState extends State<CameraScreen> {
 
   // Logika pengambilan gambar dari galeri
   void _pickImageFromGallery() async {
+    if (_isAnalyzing) return; // Mencegah klik ganda saat loading
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
     
     if (image != null) {
-      // Placeholder: Lanjutkan ke logika TFLite
-      Get.snackbar(
-        "Gambar Terpilih", 
-        "Siap dianalisis: ${image.name}",
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.green,
-        colorText: Colors.white
-      );
+      // Gantikan Placeholder
+      _analyzeAndNavigate(File(image.path));
     }
   }
 
@@ -106,7 +136,6 @@ class _CameraScreenState extends State<CameraScreen> {
         future: _initializeControllerFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.done) {
-            // Jika Controller sudah siap (Kamera tampil)
             return _buildCameraLayout(cameraFrameSize);
           } else {
             // Tampilkan loading screen sementara kamera dimuat
@@ -151,7 +180,7 @@ class _CameraScreenState extends State<CameraScreen> {
                 width: 60,
                 height: 60,
                 child: ElevatedButton(
-                  onPressed: _pickImageFromGallery,
+                  onPressed: _isAnalyzing ? null : _pickImageFromGallery, // Disable saat menganalisis
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.grey[200],
                     shape: RoundedRectangleBorder(
@@ -171,13 +200,15 @@ class _CameraScreenState extends State<CameraScreen> {
                 width: 80,
                 height: 80,
                 child: FloatingActionButton(
-                  onPressed: _takePicture, 
-                  backgroundColor: Colors.red,
+                  onPressed: _isAnalyzing ? null : _takePicture, // Disable saat menganalisis
+                  backgroundColor: _isAnalyzing ? Colors.grey : Colors.red,
                   foregroundColor: Colors.white,
                   shape: const CircleBorder(
                     side: BorderSide(color: Colors.black, width: 3.0),
                   ),
-                  child: const Icon(Icons.camera, size: 40),
+                  child: _isAnalyzing 
+                      ? const CircularProgressIndicator(color: Colors.white) // Tampilkan Loading
+                      : const Icon(Icons.camera, size: 40),
                 ),
               ),
               
