@@ -20,7 +20,7 @@ class ResultScreen extends StatelessWidget {
     final bool isHealthy = result.contains('Sehat');
     final String keterangan = isHealthy
         ? "Tanaman Tomat Anda dalam keadaan SEHAT"
-        : "Tanamat Tomat anda terjangkit LATE BLIGHT";
+        : "Tanaman Tomat anda terjangkit LATE BLIGHT";
     final Color resultColor = isHealthy ? Colors.green : Colors.red;
     
     String cleanLabel(String label) {
